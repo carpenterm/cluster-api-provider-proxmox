@@ -305,7 +305,7 @@ func TestEnsureVirtualMachine_CreateVM_SelectNode_LocalStorage(t *testing.T) {
 	t.Cleanup(func() { selectNextNode = scheduler.ScheduleVM })
 
 	// With local storage the clone must run on the target node itself.
-	expectedOptions := proxmox.VMCloneRequest{Node: "node1", Name: "test", Target: "node1", Full: 1}
+	expectedOptions := proxmox.VMCloneRequest{Node: "node1", Name: "test", Target: "node1", Full: true}
 	response := proxmox.VMCloneResponse{NewID: 123, Task: newTask()}
 	proxmoxClient.EXPECT().CloneVM(context.Background(), 123, expectedOptions).Return(response, nil).Once()
 
@@ -332,6 +332,32 @@ func TestEnsureVirtualMachine_CreateVM_SelectNode_LocalStorage_NoTemplateOnNode(
 	require.ErrorIs(t, err, goproxmox.ErrTemplateNotFound)
 	require.Contains(t, err.Error(), `no local template on selected node "node2"`)
 	requireConditionIsFalse(t, machineScope.ProxmoxMachine, infrav1.ProxmoxMachineVirtualMachineProvisionedCondition)
+}
+
+func TestEnsureVirtualMachine_CreateVM_LocalStorage_NoAllowedNodes_FallsBackToSourceNode(t *testing.T) {
+	machineScope, proxmoxClient, _ := setupReconcilerTestWithCondition(t, infrav1.ProxmoxMachineVirtualMachineProvisionedCloningReason)
+	machineScope.ProxmoxMachine.Spec.LocalStorage = ptr.To(true)
+	// No allowedNodes on cluster or machine: template lookup must fall back to the source node.
+	machineScope.ProxmoxMachine.Spec.TemplateID = nil
+	machineScope.ProxmoxMachine.Spec.TemplateSelector = &infrav1.TemplateSelector{
+		MatchTags: []string{"capmox", "template"},
+	}
+
+	proxmoxClient.EXPECT().
+		FindVMTemplatesByTags(context.Background(), []string{"capmox", "template"}, []string{"node1"}, true, string(infrav1.TemplateMatchPolicyExact)).
+		Return(map[string]int32{"node1": 123}, nil).
+		Once()
+
+	// No target node was selected, so the clone runs locally on the source node.
+	expectedOptions := proxmox.VMCloneRequest{Node: "node1", Name: "test", Full: true}
+	response := proxmox.VMCloneResponse{NewID: 123, Task: newTask()}
+	proxmoxClient.EXPECT().CloneVM(context.Background(), 123, expectedOptions).Return(response, nil).Once()
+
+	requeue, err := ensureVirtualMachine(context.Background(), machineScope)
+	require.NoError(t, err)
+	require.True(t, requeue)
+
+	require.Equal(t, "node1", *machineScope.ProxmoxMachine.Status.ProxmoxNode)
 }
 
 func TestEnsureVirtualMachine_CreateVM_SelectNode_InsufficientMemory(t *testing.T) {

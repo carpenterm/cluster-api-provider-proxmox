@@ -543,9 +543,16 @@ func createVM(ctx context.Context, scope *scope.MachineScope) (proxmox.VMCloneRe
 	if templateMap == nil {
 		templateSelectorTags := scope.ProxmoxMachine.GetTemplateSelectorTags()
 		templateMatchPolicy := string(scope.ProxmoxMachine.GetTemplateMatchPolicy())
-		allowedNodes := resolveAllowedNodes(scope)
+		lookupNodes := resolveAllowedNodes(scope)
+		if localStorage && len(lookupNodes) == 0 {
+			// No scheduling candidates, so no target node will be selected: fall back to
+			// looking up the template copy on the source node and clone locally from there.
+			if sourceNode := scope.ProxmoxMachine.GetSourceNode(); sourceNode != "" {
+				lookupNodes = []string{sourceNode}
+			}
+		}
 		var lookupErr error
-		templateMap, lookupErr = scope.InfraCluster.ProxmoxClient.FindVMTemplatesByTags(ctx, templateSelectorTags, allowedNodes, localStorage, templateMatchPolicy)
+		templateMap, lookupErr = scope.InfraCluster.ProxmoxClient.FindVMTemplatesByTags(ctx, templateSelectorTags, lookupNodes, localStorage, templateMatchPolicy)
 		if lookupErr != nil {
 			reason := infrav1.ProxmoxMachineVirtualMachineProvisionedVMProvisionFailedReason
 			conditions.Set(scope.ProxmoxMachine, metav1.Condition{
