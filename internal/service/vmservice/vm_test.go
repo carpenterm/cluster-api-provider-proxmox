@@ -627,6 +627,46 @@ func TestReconcileVirtualMachineConfig_ApplyConfig(t *testing.T) {
 	require.EqualValues(t, task.UPID, *machineScope.ProxmoxMachine.Status.TaskRef)
 }
 
+func TestReconcileVirtualMachineConfigCpuType(t *testing.T) {
+	machineScope, proxmoxClient, _ := setupReconcilerTestWithCondition(t, infrav1.ProxmoxMachineVirtualMachineProvisionedCloningReason)
+
+	// CASE: cpuType set — enforced during the post-clone config pass.
+	machineScope.ProxmoxMachine.Spec.CpuType = new("host")
+
+	vm := newStoppedVM()
+	vm.VirtualMachineConfig.CPU = "kvm64"
+	task := newTask()
+	machineScope.SetVirtualMachine(vm)
+	expectedOptions := []any{
+		proxmox.VirtualMachineOption{Name: optionCpu, Value: "host"},
+	}
+	proxmoxClient.EXPECT().ConfigureVM(context.Background(), vm, expectedOptions...).Return(task, nil).Once()
+
+	requeue, err := reconcileVirtualMachineConfig(context.Background(), machineScope)
+	require.NoError(t, err)
+	require.True(t, requeue)
+	require.EqualValues(t, task.UPID, *machineScope.ProxmoxMachine.Status.TaskRef)
+
+	// CASE: cpuType set and already matching — no config change.
+	vm = newStoppedVM()
+	vm.VirtualMachineConfig.CPU = "host"
+	machineScope.SetVirtualMachine(vm)
+
+	requeue, err = reconcileVirtualMachineConfig(context.Background(), machineScope)
+	require.NoError(t, err)
+	require.False(t, requeue)
+
+	// CASE: cpuType unset — the template's CPU model is left untouched.
+	machineScope.ProxmoxMachine.Spec.CpuType = nil
+	vm = newStoppedVM()
+	vm.VirtualMachineConfig.CPU = "host"
+	machineScope.SetVirtualMachine(vm)
+
+	requeue, err = reconcileVirtualMachineConfig(context.Background(), machineScope)
+	require.NoError(t, err)
+	require.False(t, requeue)
+}
+
 func TestReconcileVirtualMachineConfigTags(t *testing.T) {
 	machineScope, proxmoxClient, _ := setupReconcilerTestWithCondition(t, infrav1.ProxmoxMachineVirtualMachineProvisionedCloningReason)
 

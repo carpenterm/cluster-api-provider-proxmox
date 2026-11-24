@@ -46,6 +46,7 @@ const (
 
 	optionSockets     = "sockets"
 	optionCores       = "cores"
+	optionCpu         = "cpu"
 	optionMemory      = "memory"
 	optionTags        = "tags"
 	optionDescription = "description"
@@ -375,6 +376,13 @@ func reconcileVirtualMachineConfig(ctx context.Context, machineScope *scope.Mach
 	}
 	if memory > 0 && int(vmConfig.Memory) != int(memory) {
 		vmOptions = append(vmOptions, proxmox.VirtualMachineOption{Name: optionMemory, Value: memory})
+	}
+	// The QEMU CPU model is only enforced when cpuType is explicitly set; unset
+	// machines keep the template's value, which matches the Proxmox default
+	// kvm64 (DefaultCpuType). An explicit value (e.g. "host" for x86-64-v2
+	// instruction sets) is applied during the post-clone config pass.
+	if specCpuType := machineScope.ProxmoxMachine.Spec.CpuType; specCpuType != nil && *specCpuType != "" && vmConfig.CPU != *specCpuType {
+		vmOptions = append(vmOptions, proxmox.VirtualMachineOption{Name: optionCpu, Value: *specCpuType})
 	}
 
 	// Description

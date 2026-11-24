@@ -802,6 +802,17 @@ spec:
                               Systems like TalOS
                             type: boolean
                         type: object
+                      cpuType:
+                        description: |-
+                          cpuType is the QEMU CPU model exposed to the virtual machine, e.g. "host"
+                          (pass through the physical CPU, required for x86-64-v2+ instructions) or
+                          "kvm64" (generic QEMU model, the Proxmox default). It is applied to the VM
+                          during the post-clone configuration pass, before first startup.
+                          Defaults to kvm64 when unset.
+                        maxLength: 64
+                        minLength: 1
+                        pattern: ^[a-zA-Z0-9][a-zA-Z0-9.+-]*$
+                        type: string
                       description:
                         description: description for the new VM.
                         type: string

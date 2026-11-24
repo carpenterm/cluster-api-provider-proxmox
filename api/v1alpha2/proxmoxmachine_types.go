@@ -89,6 +89,17 @@ type ProxmoxMachineSpec struct {
 	// +optional
 	NumCores *int32 `json:"numCores,omitempty"`
 
+	// cpuType is the QEMU CPU model exposed to the virtual machine, e.g. "host"
+	// (pass through the physical CPU, required for x86-64-v2+ instructions) or
+	// "kvm64" (generic QEMU model, the Proxmox default). It is applied to the VM
+	// during the post-clone configuration pass, before first startup.
+	// Defaults to kvm64 when unset.
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=64
+	// +kubebuilder:validation:Pattern=`^[a-zA-Z0-9][a-zA-Z0-9.+-]*$`
+	// +optional
+	CpuType *string `json:"cpuType,omitempty"`
+
 	// memoryMiB is the size of a virtual machine's memory, in MiB.
 	// Defaults to the property value in the template from which the virtual machine is cloned.
 	// +kubebuilder:validation:MultipleOf=8
@@ -724,6 +735,19 @@ func (r *ProxmoxMachine) GetLocalStorage() bool {
 		return *r.Spec.LocalStorage
 	}
 	return false
+}
+
+// DefaultCpuType is the QEMU CPU model used when cpuType is not set. It matches
+// the Proxmox VE default so that unset machines keep their previous behavior.
+const DefaultCpuType = "kvm64"
+
+// GetCpuType returns the QEMU CPU model for this machine's VM, defaulting to
+// DefaultCpuType (kvm64) when unset.
+func (r *ProxmoxMachine) GetCpuType() string {
+	if r.Spec.CpuType != nil && *r.Spec.CpuType != "" {
+		return *r.Spec.CpuType
+	}
+	return DefaultCpuType
 }
 
 // GetTemplateSelectorTags get the tags, the desired vm template should have.
