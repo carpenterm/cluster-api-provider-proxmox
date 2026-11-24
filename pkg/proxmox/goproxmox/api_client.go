@@ -376,7 +376,16 @@ func (c *APIClient) DeleteVM(ctx context.Context, nodeName string, vmID int64) (
 	if vmidFree, err := cluster.CheckID(ctx, int(vmID)); vmidFree {
 		return nil, ErrVMIDFree
 	} else if err != nil {
-		return nil, err
+		// FORK PATCH (2026-11-24, mirrors luthermonson/go-proxmox#378): PVE
+		// >= 9.2.31 words the taken-ID error as "guest ID %d is already in
+		// use" (the vendored go-proxmox v0.8.2 only matches the old "VM %d
+		// already exists") — a taken VMID here is NOT an error: it means the
+		// VM still exists and can proceed to deletion.
+		if strings.Contains(err.Error(), fmt.Sprintf("guest ID %d is already in use", vmID)) {
+			// VM exists — fall through to deletion below.
+		} else {
+			return nil, err
+		}
 	}
 
 	vm, err := node.VirtualMachine(ctx, int(vmID))
