@@ -400,12 +400,27 @@ func (c *APIClient) DeleteVM(ctx context.Context, nodeName string, vmID int64) (
 
 // CheckID checks if the vmid is available on the cluster.
 // Returns true if the vmid is available, false if it is taken.
+//
+// FORK PATCH (2026-11-24, mirrors luthermonson/go-proxmox#378): pve-manager
+// >= 9.2.31 changed the /cluster/nextid?vmid=N error for a taken ID from
+// "VM N already exists" to "guest ID N is already in use". The vendored
+// go-proxmox v0.8.2 CheckID only matches the old string, so taken IDs
+// surfaced as hard 400 errors — blocking VM deletion entirely (CAPI machines
+// stuck in Deleting, delete-first rollouts impossible). Treat the new
+// message as "taken" here, in the fork's wrapper.
 func (c *APIClient) CheckID(ctx context.Context, vmid int64) (bool, error) {
 	cluster, err := c.Cluster(ctx)
 	if err != nil {
 		return false, fmt.Errorf("cannot get cluster")
 	}
-	return cluster.CheckID(ctx, int(vmid))
+	vmidFree, err := cluster.CheckID(ctx, int(vmid))
+	if err == nil {
+		return vmidFree, nil
+	}
+	if strings.Contains(err.Error(), fmt.Sprintf("guest ID %d is already in use", vmid)) {
+		return false, nil
+	}
+	return false, err
 }
 
 // GetTask returns a task associated with upID.
